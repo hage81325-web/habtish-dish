@@ -1,0 +1,1343 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Menu,
+  X,
+  Lock,
+  Unlock,
+  Plus,
+  Edit3,
+  Trash2,
+  Search,
+  Download,
+  Copy,
+  Check,
+  Radio,
+  Tv,
+  Key,
+  ShieldCheck,
+  Cpu,
+  Server,
+  Info,
+  Package,
+  ChevronLeft,
+  PhoneCall,
+  Sparkles,
+  Settings,
+  ExternalLink,
+  Layers,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Send,
+  FileCode,
+  UploadCloud,
+  Phone,
+  Globe,
+  Image as ImageIcon
+} from 'lucide-react';
+
+// Helper to format exact current date and time in Amharic/EAT style
+function getCurrentFormattedTimestamp() {
+  const now = new Date();
+  const monthsAm = [
+    'ጃንዋሪ', 'ፌብሩዋሪ', 'ማርች', 'ኤፕሪል', 'ሜይ', 'ጁን',
+    'ጁላይ', 'ኦገስት', 'ሴፕቴምበር', 'ኦክቶበር', 'ኖቬምበር', 'ዲሴምበር'
+  ];
+  const month = monthsAm[now.getMonth()];
+  const day = now.getDate();
+  const year = now.getFullYear();
+
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  const formattedHour = String(hours).padStart(2, '0');
+
+  return `${month} ${day}, ${year} • ${formattedHour}:${minutes} ${ampm}`;
+}
+
+// Helper to format file size cleanly
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+// Helper to compress image before saving to Realtime Database
+function compressImageFile(file, maxWidth = 800, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = event.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// 8 Core Categories
+const INITIAL_CATEGORIES = [
+  {
+    id: 'receiver-software',
+    titleAm: 'የሪሲቨር ሶፍትዌሮች',
+    titleEn: 'Receiver Software',
+    subtitle: 'Dump & USB Update Files',
+    icon: 'cpu',
+    gradient: 'from-cyan-500 to-emerald-500',
+    glow: 'shadow-cyan-500/20'
+  },
+  {
+    id: 'channel-list',
+    titleAm: 'የቻናል ዝርዝር',
+    titleEn: 'Channel List & TP',
+    subtitle: 'Ethiosat, Nilesat, Yahsat',
+    icon: 'tv',
+    gradient: 'from-emerald-500 to-teal-500',
+    glow: 'shadow-emerald-500/20'
+  },
+  {
+    id: 'master-code',
+    titleAm: 'ማስተር ኮድ',
+    titleEn: 'Master Code',
+    subtitle: '180+ Universal Reset Codes',
+    icon: 'key',
+    gradient: 'from-amber-400 to-orange-500',
+    glow: 'shadow-amber-500/20'
+  },
+  {
+    id: 'biss-key',
+    titleAm: 'ቢስ ኪይ (Biss Key)',
+    titleEn: 'Biss Key & PowerVU',
+    subtitle: 'Live Sport & Feed Keys',
+    icon: 'shield',
+    gradient: 'from-teal-400 to-cyan-600',
+    glow: 'shadow-teal-500/20'
+  },
+  {
+    id: 'finder-software',
+    titleAm: 'የፋይንደር ሶፍትዌር',
+    titleEn: 'Finder Software',
+    subtitle: 'Satlink, GTMedia & Tools',
+    icon: 'radio',
+    gradient: 'from-sky-500 to-indigo-500',
+    glow: 'shadow-sky-500/20'
+  },
+  {
+    id: 'receiver-server',
+    titleAm: 'የሪሲቨር ሰርቨር',
+    titleEn: 'Receiver Server',
+    subtitle: 'Forever, Funcam, Apollo',
+    icon: 'server',
+    gradient: 'from-yellow-400 to-amber-600',
+    glow: 'shadow-yellow-500/20'
+  },
+  {
+    id: 'receiver-tv-info',
+    titleAm: 'የሪሲቨር እና የቲቪ ኢንፎርሜሽን',
+    titleEn: 'Receiver & TV Info',
+    subtitle: 'መመሪያዎች፣ ጥገና እና ዝርዝር መረጃ',
+    icon: 'info',
+    gradient: 'from-violet-500 to-purple-600',
+    glow: 'shadow-violet-500/20'
+  },
+  {
+    id: 'dish-accessories',
+    titleAm: 'የዲሽ ዕቃዎች',
+    titleEn: 'Dish Accessories',
+    subtitle: 'LNB, ዲሽ፣ ኬብል እና ሪሞቶች',
+    icon: 'package',
+    gradient: 'from-rose-500 to-pink-600',
+    glow: 'shadow-rose-500/20'
+  }
+];
+
+const INITIAL_ITEMS = [
+  {
+    id: 'sw-1',
+    categoryId: 'receiver-software',
+    title: 'LIFESTAR LS-9090 HD Diamond V3.14 Software',
+    codeOrValue: 'LIFESTAR_9090_V3.14_USB.bin',
+    description: 'አዲስ የዩቲዩብ እና የForever ሰርቨር ማስተካከያ ያለው ኦሪጅናል ሶፍትዌር። በUSB ፍላሽ በቀላሉ ይጫናል።',
+    priceOrTag: 'v3.14 • 8.00 MB',
+    fileName: 'LIFESTAR_9090_V3.14_USB.bin',
+    fileSize: '8.00 MB',
+    imageUrl: '',
+    link: 'https://t.me/ethiodishecom',
+    postedAt: 'ኖቬምበር 17, 2026 • 02:30 PM'
+  },
+  {
+    id: 'ch-1',
+    categoryId: 'channel-list',
+    title: 'Ethiosat (NSS 12 @ 57°E) - ሁሉም የኢትዮጵያ ቻናሎች',
+    codeOrValue: '11105 H 45000  |  11545 H 30000',
+    description: 'EBC, Fana, Walta, Kana, EBS, Arts TV, Nahoo እና ሁሉም የክልል ቻናሎች በከፍተኛ ጥራት የሚገኙበት ፍሪኩዌንሲ።',
+    priceOrTag: '57.0° East',
+    imageUrl: '',
+    postedAt: 'ኖቬምበር 17, 2026 • 09:40 AM'
+  },
+  {
+    id: 'mc-1',
+    categoryId: 'master-code',
+    title: 'Lifestar / Tiger / StarSat Universal Master Code',
+    codeOrValue: '9876   ወይም   0000',
+    description: 'የተረሳ የሪሲቨር ፓስወርድ መክፈቻ ዋና ኮድ። Patch / Super Settings ለመክፈት F1 + 000 ይጫኑ።',
+    priceOrTag: 'Universal PIN',
+    imageUrl: '',
+    postedAt: 'ኖቬምበር 14, 2026 • 01:10 PM'
+  },
+  {
+    id: 'bk-1',
+    categoryId: 'biss-key',
+    title: 'Varzish Sport HD (Yahsat 52.5°E)',
+    codeOrValue: '12 34 00 46 AB CD 00 78',
+    description: 'Frequency: 11785 H 27500 | SID: 0005 - ቀጥታ የእንግሊዝ ፕሪሚየር ሊግ ስርጭት።',
+    priceOrTag: 'Active Key',
+    imageUrl: '',
+    postedAt: 'ኖቬምበር 17, 2026 • 03:15 PM'
+  },
+  {
+    id: 'srv-1',
+    categoryId: 'receiver-server',
+    title: 'Forever / Funcam VIP 12 Months Server Recharge',
+    codeOrValue: 'በSerial Number (SN) ብቻ የሚሞላ',
+    description: 'DSTV / Canal+ / OSN እና የተቆለፉ የስፖርት ቻናሎችን ያለመቆራረጥ የሚከፍት የ1 ዓመት ኦሪጅናል ሰርቨር። ለማስሞላት በቴሌግራም @habtamu7782 ያናግሩን።',
+    priceOrTag: '12 Months VIP',
+    imageUrl: '',
+    postedAt: 'ኖቬምበር 17, 2026 • 12:20 PM'
+  },
+  {
+    id: 'acc-1',
+    categoryId: 'dish-accessories',
+    title: 'ኦሪጅናል Twin / Quad Universal Ku-Band LNB',
+    codeOrValue: '0.1dB Super Low Noise HD/4K',
+    description: 'ለ2 እና ለ4 ሪሲቨር በአንድ ዲሽ የሚያገለግል ጠንካራ ሲግናል ሰጪ LNB። ዝናብ እና ፀሐይ የሚቋቋም። ለማዘዝ @habtamu7782 ወይም 0977822121 ይደውሉ።',
+    priceOrTag: 'በስቶክ አለ',
+    imageUrl: '',
+    postedAt: 'ኖቬምበር 17, 2026 • 01:45 PM'
+  }
+];
+
+const DEFAULT_PIN = '1234';
+const OWNER_TELEGRAM_USER = '@habtamu7782';
+const OWNER_TELEGRAM_URL = 'https://t.me/habtamu7782';
+const TELEGRAM_CHANNEL_URL = 'https://t.me/ethiodishecom';
+const TELEGRAM_CHANNEL_HANDLE = '@ethiodishecom';
+const PHONE_1 = '0977822121';
+const PHONE_2 = '0970060671';
+
+const CategoryIcon = ({ name, className = 'w-7 h-7' }) => {
+  switch (name) {
+    case 'cpu': return <Cpu className={className} />;
+    case 'tv': return <Tv className={className} />;
+    case 'key': return <Key className={className} />;
+    case 'shield': return <ShieldCheck className={className} />;
+    case 'radio': return <Radio className={className} />;
+    case 'server': return <Server className={className} />;
+    case 'info': return <Info className={className} />;
+    case 'package': return <Package className={className} />;
+    default: return <Layers className={className} />;
+  }
+};
+
+const NeonSatelliteLogo = ({ className = 'w-12 h-12' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="cyberDish" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#22D3EE" />
+        <stop offset="0.5" stopColor="#10B981" />
+        <stop offset="1" stopColor="#059669" />
+      </linearGradient>
+      <linearGradient id="amberBeam" x1="36" y1="10" x2="56" y2="26" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FDE047" />
+        <stop offset="1" stopColor="#F59E0B" />
+      </linearGradient>
+    </defs>
+    <path d="M21 57H43M32 45V57M24 57L32 47L40 57" stroke="#94A3B8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 21C10 31 14 43 25 47C36 51 47 47 51 36L14 21Z" fill="url(#cyberDish)" stroke="#A7F3D0" strokeWidth="2" strokeLinejoin="round" />
+    <ellipse cx="32.5" cy="28.5" rx="19.5" ry="6.5" transform="rotate(22 32.5 28.5)" fill="#0F172A" stroke="#34D399" strokeWidth="2" />
+    <path d="M32 29L46 16" stroke="#E2E8F0" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="47.5" cy="14.5" r="3.8" fill="url(#amberBeam)" stroke="#FEF08A" strokeWidth="1.5" />
+    <path d="M50 8.5C53.5 9 56.5 12 57 15.5" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M52 3.5C57.5 4.5 61 9 62 14.5" stroke="#22D3EE" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
+
+export default function App() {
+  const [categories, setCategories] = useState(INITIAL_CATEGORIES);
+  const [items, setItems] = useState(INITIAL_ITEMS);
+  const [adminPin, setAdminPin] = useState(DEFAULT_PIN);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
+
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [showChangePin, setShowChangePin] = useState(false);
+
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+
+  const [formData, setFormData] = useState({
+    categoryId: 'receiver-software',
+    title: '',
+    codeOrValue: '',
+    description: '',
+    priceOrTag: '',
+    link: '',
+    fileName: '',
+    fileSize: '',
+    fileDataUrl: '',
+    imageUrl: ''
+  });
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [newCatForm, setNewCatForm] = useState({ titleAm: '', titleEn: '', subtitle: '', icon: 'package' });
+
+  // FIREBASE REALTIME DATABASE SYNC CONNECTION
+  useEffect(() => {
+    if (window.firebase) {
+      try {
+        const dbRef = window.firebase.database().ref('habtish_dish_v2');
+        dbRef.on('value', (snapshot) => {
+          const val = snapshot.val();
+          if (val) {
+            if (val.items) setItems(val.items);
+            if (val.categories) setCategories(val.categories);
+            if (val.adminPin) setAdminPin(val.adminPin);
+          } else {
+            dbRef.set({
+              items: INITIAL_ITEMS,
+              categories: INITIAL_CATEGORIES,
+              adminPin: DEFAULT_PIN
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Firebase sync error:", err);
+      }
+    }
+  }, []);
+
+  // Save changes to Firebase Realtime Database so everyone receives updates instantly
+  const syncToCloud = (newItems, newCats, newPin) => {
+    const updatedItems = newItems !== undefined ? newItems : items;
+    const updatedCats = newCats !== undefined ? newCats : categories;
+    const updatedPin = newPin !== undefined ? newPin : adminPin;
+
+    setItems(updatedItems);
+    setCategories(updatedCats);
+    setAdminPin(updatedPin);
+
+    if (window.firebase) {
+      try {
+        window.firebase.database().ref('habtish_dish_v2').set({
+          items: updatedItems,
+          categories: updatedCats,
+          adminPin: updatedPin
+        });
+      } catch (err) {
+        console.error("Cloud save error:", err);
+      }
+    }
+  };
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3200);
+  };
+
+  const handleCopy = (text, uniqueKey) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text);
+    setCopiedKey(uniqueKey);
+    showToast(`ተቀድቷል: ${text}`);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const handleOpenAdminModal = () => {
+    setPinInput('');
+    setPinError('');
+    setShowChangePin(false);
+    setPinModalOpen(true);
+  };
+
+  const handlePinSubmit = (e) => {
+    e.preventDefault();
+    if (pinInput.trim() === adminPin) {
+      setIsAdmin(true);
+      setPinModalOpen(false);
+      setPinInput('');
+      showToast('የአስተዳዳሪ (Owner) ሁነታ ተከፍቷል! አሁን ፎቶ እና መረጃ መልቀቅ ይችላሉ።');
+    } else {
+      setPinError('የተሳሳተ PIN ኮድ! (Default: 1234)');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    setPinModalOpen(false);
+    showToast('Admin Mode ተዘግቷል።');
+  };
+
+  const handleChangePin = (e) => {
+    e.preventDefault();
+    if (newPinInput.trim().length < 4) {
+      setPinError('አዲሱ PIN ቢያንስ 4 ቁጥሮች መሆን አለበት።');
+      return;
+    }
+    const newPin = newPinInput.trim();
+    syncToCloud(undefined, undefined, newPin);
+    setNewPinInput('');
+    setShowChangePin(false);
+    showToast('የአስተዳዳሪ PIN ተቀይሯል!');
+  };
+
+  // Image Upload Handler
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('እባክዎ ትክክለኛ የፎቶ ፋይል (JPG, PNG) ይምረጡ!');
+      return;
+    }
+
+    try {
+      const compressedDataUrl = await compressImageFile(file, 800, 0.75);
+      setFormData((prev) => ({
+        ...prev,
+        imageUrl: compressedDataUrl
+      }));
+      showToast('✓ ፎቶው በተሳካ ሁኔታ ገብቷል!');
+    } catch (err) {
+      console.error('Image processing error:', err);
+      showToast('ፎቶውን ማስገባት አልተቻለም፣ እባክዎ ሌላ ፎቶ ይሞክሩ።');
+    }
+  };
+
+  // Software File Upload Handler
+  const handleSoftwareFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const sizeStr = formatBytes(file.size);
+    const autoTitle = formData.title.trim() ? formData.title : file.name.replace(/\.[^/.]+$/, '');
+
+    if (file.size <= 2.5 * 1024 * 1024) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setFormData((prev) => ({
+          ...prev,
+          title: autoTitle,
+          codeOrValue: prev.codeOrValue || file.name,
+          priceOrTag: prev.priceOrTag || sizeStr,
+          fileName: file.name,
+          fileSize: sizeStr,
+          fileDataUrl: reader.result
+        }));
+        showToast(`ፋይሉ ተመርጧል: ${file.name} (${sizeStr})`);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        title: autoTitle,
+        codeOrValue: prev.codeOrValue || file.name,
+        priceOrTag: prev.priceOrTag || sizeStr,
+        fileName: file.name,
+        fileSize: sizeStr,
+        fileDataUrl: ''
+      }));
+      showToast(`ፋይሉ ተመርጧል (${sizeStr})።`);
+    }
+  };
+
+  const openAddModal = (defaultCatId = null) => {
+    if (!isAdmin) return;
+    setEditingItem(null);
+    setFormData({
+      categoryId: defaultCatId || selectedCategoryId || categories[0]?.id || 'receiver-software',
+      title: '',
+      codeOrValue: '',
+      description: '',
+      priceOrTag: '',
+      link: '',
+      fileName: '',
+      fileSize: '',
+      fileDataUrl: '',
+      imageUrl: ''
+    });
+    setItemModalOpen(true);
+  };
+
+  const openEditModal = (item) => {
+    if (!isAdmin) return;
+    setEditingItem(item);
+    setFormData({
+      categoryId: item.categoryId,
+      title: item.title,
+      codeOrValue: item.codeOrValue || '',
+      description: item.description || '',
+      priceOrTag: item.priceOrTag || '',
+      link: item.link || '',
+      fileName: item.fileName || '',
+      fileSize: item.fileSize || '',
+      fileDataUrl: item.fileDataUrl || '',
+      imageUrl: item.imageUrl || ''
+    });
+    setItemModalOpen(true);
+  };
+
+  const handleSaveItem = (e) => {
+    e.preventDefault();
+    if (!isAdmin || !formData.title.trim()) return;
+
+    const exactTimestamp = getCurrentFormattedTimestamp();
+    let updatedItems = [...items];
+
+    if (editingItem) {
+      updatedItems = updatedItems.map((it) =>
+        it.id === editingItem.id
+          ? { ...it, ...formData, postedAt: `${exactTimestamp} (ተስተካክሏል)` }
+          : it
+      );
+      showToast('መረጃው ተስተካክሎ ለሁሉም ተጠቃሚዎች ተለቋል!');
+    } else {
+      const newItem = {
+        id: 'post-' + Date.now(),
+        ...formData,
+        postedAt: exactTimestamp
+      };
+      updatedItems = [newItem, ...updatedItems];
+      showToast('አዲስ መረጃ ከፎቶው ጋር ለሁሉም ተጠቃሚዎች ደርሷል!');
+    }
+
+    syncToCloud(updatedItems, undefined, undefined);
+    setItemModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const confirmDeleteItem = () => {
+    if (!isAdmin || !deleteTarget) return;
+    const updatedItems = items.filter((it) => it.id !== deleteTarget.id);
+    syncToCloud(updatedItems, undefined, undefined);
+    setDeleteTarget(null);
+    showToast('መረጃው ተሰርዟል!');
+  };
+
+  const handleAddCategory = (e) => {
+    e.preventDefault();
+    if (!isAdmin || !newCatForm.titleAm.trim()) return;
+    const newCat = {
+      id: 'cat-' + Date.now(),
+      titleAm: newCatForm.titleAm.trim(),
+      titleEn: newCatForm.titleEn.trim() || 'Custom Category',
+      subtitle: newCatForm.subtitle.trim() || 'ተጨማሪ ክፍል',
+      icon: newCatForm.icon,
+      gradient: 'from-cyan-500 to-emerald-600',
+      glow: 'shadow-cyan-500/20'
+    };
+    const updatedCats = [...categories, newCat];
+    syncToCloud(undefined, updatedCats, undefined);
+    setNewCatForm({ titleAm: '', titleEn: '', subtitle: '', icon: 'package' });
+    setCatModalOpen(false);
+    showToast('አዲስ ክፍል ተጨምሯል!');
+  };
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      const matchesCat = selectedCategoryId ? item.categoryId === selectedCategoryId : true;
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return matchesCat;
+      return (
+        matchesCat &&
+        (item.title.toLowerCase().includes(q) ||
+          (item.codeOrValue && item.codeOrValue.toLowerCase().includes(q)) ||
+          (item.description && item.description.toLowerCase().includes(q)) ||
+          (item.fileName && item.fileName.toLowerCase().includes(q)) ||
+          (item.priceOrTag && item.priceOrTag.toLowerCase().includes(q)))
+      );
+    });
+  }, [items, selectedCategoryId, searchQuery]);
+
+  const activeCategory = categories.find((c) => c.id === selectedCategoryId);
+  const getCategoryItemCount = (catId) => items.filter((i) => i.categoryId === catId).length;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 selection:bg-cyan-400 selection:text-slate-950 relative overflow-x-hidden">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-32 -left-24 w-80 h-80 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="absolute top-1/3 -right-24 w-80 h-80 rounded-full bg-emerald-500/10 blur-3xl" />
+      </div>
+
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl border border-cyan-400/40">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <p className="text-xs sm:text-sm font-semibold">{toast}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-slate-900/85 backdrop-blur-xl border-b border-white/10 shadow-lg">
+        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {selectedCategoryId ? (
+              <button
+                onClick={() => { setSelectedCategoryId(null); setSearchQuery(''); }}
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-cyan-300 active:scale-95 transition"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-cyan-300 active:scale-95 transition"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+
+            <div
+              onClick={() => { setSelectedCategoryId(null); setSearchQuery(''); }}
+              className="cursor-pointer flex items-center gap-2.5"
+            >
+              <NeonSatelliteLogo className="w-9 h-9 shrink-0" />
+              <div>
+                <h1 className="text-lg sm:text-xl font-black tracking-tight bg-gradient-to-r from-white via-cyan-200 to-emerald-300 bg-clip-text text-transparent">
+                  ሀብትሽ ዲሽ
+                </h1>
+                <p className="text-[10px] font-bold tracking-wider uppercase text-amber-400 -mt-0.5">
+                  CLOUD REALTIME SYNC
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <a
+              href={TELEGRAM_CHANNEL_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/30 text-sky-300 text-xs font-bold transition"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Channel</span>
+            </a>
+
+            <button
+              onClick={handleOpenAdminModal}
+              title="Admin Login"
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition active:scale-95 border ${
+                isAdmin
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-500/30'
+                  : 'bg-white/10 hover:bg-white/15 text-slate-200 border-white/10'
+              }`}
+            >
+              {isAdmin ? <Unlock className="w-5 h-5" /> : <Info className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="max-w-3xl mx-auto px-4 pt-4 relative z-10">
+        {!selectedCategoryId && (
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/70 border border-white/10 shadow-2xl p-5 mb-5">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-slate-950/90 border border-cyan-400/30 flex items-center justify-center shadow-inner shrink-0">
+                <NeonSatelliteLogo className="w-12 h-12" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">ሀብትሽ ዲሽ</h2>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950">
+                    LIVE SYNC
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
+                  ሶፍትዌሮች፣ ፍሪኩዌንሲ፣ ቢስ ኪይ፣ ሰርቨር እና የዲሽ ዕቃዎች በቅጽበት ለሁሉም ይደርሳሉ
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-white/10">
+              <a href={OWNER_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-300">
+                <Send className="w-4 h-4 shrink-0 text-sky-400" />
+                <div className="min-w-0">
+                  <p className="text-[10px] text-sky-200/70 font-semibold">Telegram</p>
+                  <p className="text-xs font-extrabold truncate">{OWNER_TELEGRAM_USER}</p>
+                </div>
+              </a>
+              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-300">
+                <Globe className="w-4 h-4 shrink-0 text-emerald-400" />
+                <div className="min-w-0">
+                  <p className="text-[10px] text-emerald-200/70 font-semibold">TG Channel</p>
+                  <p className="text-xs font-extrabold truncate">{TELEGRAM_CHANNEL_HANDLE}</p>
+                </div>
+              </a>
+              <a href={`tel:${PHONE_1}`} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-300">
+                <Phone className="w-4 h-4 shrink-0 text-amber-400" />
+                <div className="min-w-0">
+                  <p className="text-[10px] text-amber-200/70 font-semibold">ስልክ 1</p>
+                  <p className="text-xs font-extrabold truncate">{PHONE_1}</p>
+                </div>
+              </a>
+              <a href={`tel:${PHONE_2}`} className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-300">
+                <PhoneCall className="w-4 h-4 shrink-0 text-amber-400" />
+                <div className="min-w-0">
+                  <p className="text-[10px] text-amber-200/70 font-semibold">ስልክ 2</p>
+                  <p className="text-xs font-extrabold truncate">{PHONE_2}</p>
+                </div>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="relative mb-5">
+          <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={selectedCategoryId ? `በ ${activeCategory?.titleAm} ውስጥ ይፈልጉ...` : 'ሶፍትዌር፣ ፍሪኩዌንሲ፣ Biss Key ወይም ሪሲቨር ይፈልጉ...'}
+            className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-slate-900/90 border border-white/10 focus:border-cyan-400 text-white placeholder-slate-400 outline-none text-sm font-medium shadow-lg"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Admin Bar */}
+        {isAdmin && (
+          <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-emerald-500/20 border border-amber-400/40 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-black text-amber-300">የባለቤት (Admin) ሁነታ ክፍት ነው</p>
+                <p className="text-[11px] text-slate-300">እዚህ የሚለቁት ፎቶ እና መረጃ በሰከንድ ውስጥ ለሁሉም ተጠቃሚዎች ይደርሳል።</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!selectedCategoryId && (
+                <button onClick={() => setCatModalOpen(true)} className="px-3 py-2 rounded-xl bg-white/10 text-white text-xs font-bold flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5 text-amber-400" />
+                  <span>አዲስ ክፍል</span>
+                </button>
+              )}
+              <button onClick={() => openAddModal()} className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg">
+                <Plus className="w-4 h-4 stroke-[2.75]" />
+                <span>አዲስ ጨምር (+)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Home Categories Grid */}
+        {!selectedCategoryId && !searchQuery.trim() && (
+          <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
+            {categories.map((cat) => {
+              const count = getCategoryItemCount(cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                  className={`group relative bg-slate-900/80 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-white/10 hover:border-cyan-400/50 shadow-xl ${cat.glow} transition flex flex-col items-center text-center active:scale-[0.97]`}
+                >
+                  <span className="absolute top-3 right-3 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-white/10 text-cyan-300 group-hover:bg-cyan-400 group-hover:text-slate-950 transition">
+                    {count}
+                  </span>
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br ${cat.gradient} text-white flex items-center justify-center shadow-lg mb-3.5 group-hover:scale-105 transition-transform`}>
+                    <CategoryIcon name={cat.icon} className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </div>
+                  <h3 className="text-sm sm:text-base font-black text-white leading-snug mb-1">{cat.titleAm}</h3>
+                  <p className="text-xs font-bold text-cyan-400 mb-1">{cat.titleEn}</p>
+                  <p className="text-[11px] text-slate-400 line-clamp-1">{cat.subtitle}</p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Category Detail / Search Results */}
+        {(selectedCategoryId || searchQuery.trim()) && (
+          <div>
+            <div className="flex items-center justify-between mb-4 bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-white/10 shadow-lg">
+              <div className="flex items-center gap-3 min-w-0">
+                {activeCategory ? (
+                  <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${activeCategory.gradient} text-white flex items-center justify-center shadow-md shrink-0`}>
+                    <CategoryIcon name={activeCategory.icon} className="w-6 h-6" />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500 text-slate-950 flex items-center justify-center shadow-md shrink-0">
+                    <Search className="w-6 h-6" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-black text-white truncate">
+                    {activeCategory ? activeCategory.titleAm : 'የፍለጋ ውጤቶች'}
+                  </h2>
+                  <p className="text-xs text-slate-400 truncate">
+                    {activeCategory ? `${activeCategory.titleEn} • ${filteredItems.length} መረጃዎች` : `${filteredItems.length} ውጤቶች ተገኝተዋል`}
+                  </p>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <button onClick={() => openAddModal(selectedCategoryId)} className="shrink-0 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg">
+                  <Plus className="w-4 h-4 stroke-[2.75]" />
+                  <span>ጨምር</span>
+                </button>
+              )}
+            </div>
+
+            {filteredItems.length === 0 ? (
+              <div className="bg-slate-900/80 rounded-3xl p-10 text-center border border-white/10">
+                <div className="w-14 h-14 rounded-full bg-white/5 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                  <AlertCircle className="w-7 h-7" />
+                </div>
+                <h3 className="text-base font-bold text-white mb-1">ምንም መረጃ አልተገኘም</h3>
+                <p className="text-xs text-slate-400 mb-4">በዚህ ክፍል ውስጥ እስካሁን የተለቀቀ መረጃ የለም።</p>
+                {isAdmin && (
+                  <button onClick={() => openAddModal(selectedCategoryId)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-400 text-slate-950 text-xs font-black shadow-lg">
+                    <Plus className="w-4 h-4" />
+                    <span>አዲስ መረጃ ይልቀቁ</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {filteredItems.map((item) => {
+                  const cat = categories.find((c) => c.id === item.categoryId);
+                  return (
+                    <PostItemCard
+                      key={item.id}
+                      item={item}
+                      category={!selectedCategoryId ? cat : null}
+                      isAdmin={isAdmin}
+                      copiedKey={copiedKey}
+                      onCopy={handleCopy}
+                      onEdit={() => openEditModal(item)}
+                      onDelete={() => setDeleteTarget(item)}
+                      onPreviewImage={(url) => setPreviewImageUrl(url)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Floating Add Button for Admin */}
+      {isAdmin && (
+        <button onClick={() => openAddModal()} className="fixed bottom-6 right-6 z-40 w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-emerald-400 to-teal-500 text-slate-950 shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition ring-4 ring-slate-950">
+          <Plus className="w-8 h-8 stroke-[3]" />
+        </button>
+      )}
+
+      {/* Drawer */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-xs" onClick={() => setDrawerOpen(false)} />
+          <div className="relative w-80 max-w-[85vw] bg-slate-900 border-r border-white/10 h-full shadow-2xl flex flex-col z-10 overflow-y-auto">
+            <div className="p-5 bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 border-b border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-cyan-400/30 p-1.5 shadow">
+                  <NeonSatelliteLogo className="w-full h-full" />
+                </div>
+                <button onClick={() => setDrawerOpen(false)} className="p-2 rounded-xl bg-white/10 text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <h2 className="text-xl font-black text-white">ሀብትሽ ዲሽ</h2>
+              <p className="text-xs text-cyan-300 font-semibold">Habtish Dish & Satellite Center</p>
+            </div>
+
+            <div className="p-3 flex-1 space-y-1">
+              <button
+                onClick={() => { setSelectedCategoryId(null); setSearchQuery(''); setDrawerOpen(false); }}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-bold transition ${!selectedCategoryId ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' : 'text-slate-300 hover:bg-white/5'}`}
+              >
+                <Layers className="w-5 h-5 text-cyan-400" />
+                <span>ዋና ገጽ (Home)</span>
+              </button>
+
+              <div className="pt-2 pb-1 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">ሁሉም ክፍሎች</div>
+
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => { setSelectedCategoryId(cat.id); setSearchQuery(''); setDrawerOpen(false); }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition ${selectedCategoryId === cat.id ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' : 'text-slate-300 hover:bg-white/5'}`}
+                >
+                  <div className="flex items-center gap-3 truncate">
+                    <CategoryIcon name={cat.icon} className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="truncate">{cat.titleAm}</span>
+                  </div>
+                  <span className="text-xs bg-white/10 text-slate-300 px-2 py-0.5 rounded-full">{getCategoryItemCount(cat.id)}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-slate-950/60">
+              <button onClick={() => { setDrawerOpen(false); handleOpenAdminModal(); }} className="w-full py-2.5 px-4 rounded-xl bg-white/10 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/10">
+                {isAdmin ? <Unlock className="w-4 h-4 text-amber-400" /> : <Lock className="w-4 h-4 text-cyan-400" />}
+                <span>{isAdmin ? 'Admin Settings / Logout' : 'Admin Login'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Login Modal */}
+      {pinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-white/15 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative text-white">
+            <button onClick={() => setPinModalOpen(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:bg-white/10 rounded-full">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="w-14 h-14 rounded-2xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 flex items-center justify-center mx-auto mb-3">
+              {isAdmin ? <Unlock className="w-7 h-7" /> : <Lock className="w-7 h-7" />}
+            </div>
+            <h3 className="text-lg font-black text-center">የባለቤት መግቢያ (Admin PIN)</h3>
+            <p className="text-xs text-center text-slate-400 mt-1 mb-4">(ነባሪ PIN: <span className="font-mono text-cyan-300 font-bold">1234</span>)</p>
+
+            {!isAdmin ? (
+              <form onSubmit={handlePinSubmit} className="space-y-4">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="PIN (1234)"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-white/15 focus:border-cyan-400 text-white text-center text-lg tracking-widest font-bold outline-none"
+                  autoFocus
+                />
+                {pinError && <p className="text-xs text-rose-400 font-semibold text-center">{pinError}</p>}
+                <button type="submit" className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 font-black text-sm shadow-lg">
+                  ክፈት (Unlock)
+                </button>
+              </form>
+            ) : (
+              <div className="space-y-3">
+                {!showChangePin ? (
+                  <button onClick={() => setShowChangePin(true)} className="w-full py-2.5 rounded-xl bg-white/10 text-white text-xs font-bold flex items-center justify-center gap-2">
+                    <Settings className="w-4 h-4 text-cyan-400" />
+                    <span>PIN ቁጥር ቀይር</span>
+                  </button>
+                ) : (
+                  <form onSubmit={handleChangePin} className="space-y-2">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      value={newPinInput}
+                      onChange={(e) => setNewPinInput(e.target.value)}
+                      placeholder="አዲስ PIN ያስገቡ"
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm text-center font-bold text-white"
+                    />
+                    <button type="submit" className="w-full py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black">አስቀምጥ</button>
+                  </form>
+                )}
+                <button onClick={handleAdminLogout} className="w-full py-3 rounded-xl bg-rose-600 text-white font-bold text-sm flex items-center justify-center gap-2">
+                  <Lock className="w-4 h-4" />
+                  <span>Admin Mode ዝጋ</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Item Modal WITH IMAGE UPLOADER ('ፎቶ ማስገቢያ') */}
+      {isAdmin && itemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-white/15 rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-6 shadow-2xl max-h-[92vh] overflow-y-auto text-white">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-black">{editingItem ? 'መረጃ አስተካክል' : 'አዲስ መረጃ ልቀቅ (+)'}</h3>
+                <p className="text-[11px] text-cyan-400 flex items-center gap-1 mt-0.5">
+                  <Clock className="w-3 h-3" />
+                  <span>ለሁሉም ተጠቃሚዎች በሰከንድ ውስጥ ይደርሳል</span>
+                </p>
+              </div>
+              <button onClick={() => setItemModalOpen(false)} className="p-2 text-slate-400 hover:bg-white/10 rounded-full">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveItem} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">ክፍል ይምረጡ</label>
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                  className="w-full px-3.5 py-3 rounded-xl bg-slate-950 border border-white/15 text-white text-sm font-semibold"
+                >
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.titleAm} ({cat.titleEn})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* PHOTO UPLOADER SECTION ('ፎቶ ማስገቢያ') */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-dashed border-amber-400/40">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-extrabold text-amber-300 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4" />
+                    <span>ፎቶ ማስገቢያ (Upload Photo / Image)</span>
+                  </span>
+                  {formData.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                      className="text-[11px] text-rose-400 font-bold hover:underline"
+                    >
+                      ፎቶውን አጥፋ
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+
+                {formData.imageUrl ? (
+                  <div className="relative rounded-xl overflow-hidden border border-white/15 bg-slate-900">
+                    <img
+                      src={formData.imageUrl}
+                      alt="Preview"
+                      className="w-full h-44 object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      className="absolute bottom-2 right-2 px-3 py-1.5 rounded-lg bg-black/75 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 border border-white/20"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                      <span>ፎቶ ቀይር</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="w-full py-3.5 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/20 border border-amber-400/30 text-amber-200 text-xs font-bold flex items-center justify-center gap-2 transition"
+                  >
+                    <ImageIcon className="w-5 h-5 text-amber-400" />
+                    <span>የዕቃውን ወይም የመረጃውን ፎቶ ይምረጡ (Photo)</span>
+                  </button>
+                )}
+              </div>
+
+              {/* SOFTWARE FILE UPLOADER */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-dashed border-cyan-400/40">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-extrabold text-cyan-300 flex items-center gap-1.5">
+                    <FileCode className="w-4 h-4" />
+                    <span>ሶፍትዌር / ፋይል አባሪ (Optional)</span>
+                  </span>
+                  {formData.fileName && (
+                    <button type="button" onClick={() => setFormData({ ...formData, fileName: '', fileSize: '', fileDataUrl: '' })} className="text-[11px] text-rose-400 font-bold">
+                      አጥፋ
+                    </button>
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept=".bin,.abs,.sdx,.zip,.rar,.apk,.pdf,.txt" onChange={handleSoftwareFileChange} className="hidden" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-3 px-4 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs font-bold flex items-center justify-center gap-2">
+                  <UploadCloud className="w-5 h-5 text-cyan-400" />
+                  <span>{formData.fileName ? `${formData.fileName} (${formData.fileSize})` : 'ፋይል (.bin, .abs, .zip) ይምረጡ'}</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">ርዕስ / ስም *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="ለምሳሌ፡ Lifestar 9090 Software ወይም Twin LNB"
+                  className="w-full px-3.5 py-3 rounded-xl bg-slate-950 border border-white/15 text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">ኮድ / ፍሪኩዌንሲ / ቴፕ</label>
+                <input
+                  type="text"
+                  value={formData.codeOrValue}
+                  onChange={(e) => setFormData({ ...formData, codeOrValue: e.target.value })}
+                  placeholder="11105 H 45000"
+                  className="w-full px-3.5 py-3 rounded-xl bg-slate-950 border border-white/15 text-emerald-300 font-mono text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">መለያ / ዋጋ (Tag)</label>
+                  <input
+                    type="text"
+                    value={formData.priceOrTag}
+                    onChange={(e) => setFormData({ ...formData, priceOrTag: e.target.value })}
+                    placeholder="450 ብር / 8.00 MB"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">ሊንክ (URL)</label>
+                  <input
+                    type="url"
+                    value={formData.link}
+                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                    placeholder="https://t.me/ethiodishecom"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">ዝርዝር መረጃ</label>
+                <textarea
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="ዝርዝር ማብራሪያ..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white text-sm"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setItemModalOpen(false)} className="flex-1 py-3 rounded-xl bg-white/10 text-slate-200 font-bold text-sm">
+                  ሰርዝ
+                </button>
+                <button type="submit" className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 font-black text-sm shadow-lg">
+                  {editingItem ? 'አስተካክል' : 'ለቀው (Post)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Category Modal */}
+      {isAdmin && catModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-white/15 rounded-3xl max-w-md w-full p-6 shadow-2xl text-white">
+            <h3 className="text-lg font-black mb-4">አዲስ ክፍል ጨምር</h3>
+            <form onSubmit={handleAddCategory} className="space-y-3.5">
+              <input
+                type="text"
+                required
+                value={newCatForm.titleAm}
+                onChange={(e) => setNewCatForm({ ...newCatForm, titleAm: e.target.value })}
+                placeholder="የክፍሉ ስም በአማርኛ (ምሳሌ፡ ኬብሎች)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm"
+              />
+              <input
+                type="text"
+                value={newCatForm.titleEn}
+                onChange={(e) => setNewCatForm({ ...newCatForm, titleEn: e.target.value })}
+                placeholder="English Title"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm"
+              />
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setCatModalOpen(false)} className="flex-1 py-2.5 rounded-xl bg-white/10 text-sm font-bold">ዝጋ</button>
+                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-cyan-400 text-slate-950 text-sm font-black">ፍጠር</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {isAdmin && deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-white/15 rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center text-white">
+            <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-black">እርግጠኛ ነዎት መሰረዝ ይፈልጋሉ?</h3>
+            <p className="text-xs text-slate-400 mt-1 mb-5">ይህ መረጃ ከሁሉም ተጠቃሚዎች ስልክ በሰከንድ ውስጥ ይጠፋል።</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-xl bg-white/10 text-sm font-bold">ተመለስ</button>
+              <button onClick={confirmDeleteItem} className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold">አዎ፣ ሰርዝ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen Image Preview Modal */}
+      {previewImageUrl && (
+        <div
+          onClick={() => setPreviewImageUrl(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+        >
+          <button
+            onClick={() => setPreviewImageUrl(null)}
+            className="absolute top-5 right-5 p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={previewImageUrl}
+            alt="Full Preview"
+            className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border border-white/15 object-contain"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Post Item Card Class/Component WITH PHOTO DISPLAY
+function PostItemCard({ item, category, isAdmin, copiedKey, onCopy, onEdit, onDelete, onPreviewImage }) {
+  const isOrderable = item.categoryId === 'receiver-server' || item.categoryId === 'dish-accessories';
+
+  return (
+    <div className="bg-slate-900/85 backdrop-blur-md rounded-2xl overflow-hidden border border-white/10 hover:border-cyan-400/30 shadow-lg transition">
+      {/* ATTACHED PHOTO DISPLAY INSIDE THE CARD CLASS */}
+      {item.imageUrl && (
+        <div
+          onClick={() => onPreviewImage && onPreviewImage(item.imageUrl)}
+          className="relative w-full h-52 sm:h-60 bg-slate-950 overflow-hidden cursor-pointer group border-b border-white/10"
+        >
+          <img
+            src={item.imageUrl}
+            alt={item.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+          <span className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-xs text-[10px] font-bold text-white border border-white/15">
+            ፎቶውን ለማትለቅ ይንኩ
+          </span>
+        </div>
+      )}
+
+      <div className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white/5 text-cyan-300 border border-white/10">
+            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>{item.postedAt}</span>
+          </span>
+          {item.priceOrTag && (
+            <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
+              {item.priceOrTag}
+            </span>
+          )}
+        </div>
+
+        {category && (
+          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 mb-1">
+            {category.titleAm}
+          </span>
+        )}
+
+        <h4 className="text-sm sm:text-base font-black text-white leading-snug">{item.title}</h4>
+
+        {item.fileName && (
+          <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs font-bold">
+            <FileCode className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span className="truncate max-w-[210px]">{item.fileName}</span>
+            {item.fileSize && <span className="text-[10px] text-cyan-300">({item.fileSize})</span>}
+          </div>
+        )}
+
+        {item.codeOrValue && (
+          <div className="mt-2.5 flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-emerald-300 font-mono text-xs sm:text-sm">
+            <span className="truncate select-all">{item.codeOrValue}</span>
+            <button onClick={() => onCopy(item.codeOrValue, item.id)} className="shrink-0 p-1.5 rounded-lg bg-white/10 text-white">
+              {copiedKey === item.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        )}
+
+        {item.description && (
+          <p className="mt-2.5 text-xs sm:text-sm text-slate-300 leading-relaxed">{item.description}</p>
+        )}
+
+        <div className="mt-3.5 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {item.fileDataUrl && (
+              <a href={item.fileDataUrl} download={item.fileName || 'software.bin'} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 text-xs font-black shadow">
+                <Download className="w-3.5 h-3.5" />
+                <span>ሶፍትዌሩን አውርድ</span>
+              </a>
+            )}
+            {item.link && (
+              <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold">
+                <Download className="w-3.5 h-3.5" />
+                <span>አውርድ / ቻናል</span>
+                <ExternalLink className="w-3 h-3 opacity-80" />
+              </a>
+            )}
+            {isOrderable && (
+              <>
+                <a href={OWNER_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 text-sky-300 text-xs font-bold">
+                  <Send className="w-3.5 h-3.5" />
+                  <span>በTelegram እዘዝ</span>
+                </a>
+                <a href={`tel:${PHONE_1}`} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold">
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>{PHONE_1}</span>
+                </a>
+              </>
+            )}
+          </div>
+
+          {isAdmin && (
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={onEdit} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-400/20 text-amber-300 text-xs font-bold">
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit</span>
+              </button>
+              <button onClick={onDelete} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 text-xs font-bold">
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
